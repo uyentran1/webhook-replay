@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "./mvnw test",
+      "git status",
+      "git diff",
+      "docker compose ps"
+    ]
+  }
+}
