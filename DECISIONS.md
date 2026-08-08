@@ -198,6 +198,31 @@ cannot serve. Build `ordering_key` then, not strict per-endpoint FIFO.
 
 ---
 
+## 8. Spring Boot 4.1, not 3.x
+
+**Date:** 2026-08-08
+
+**Decision:** Spring Boot 4.1.0 on Java 21. `CLAUDE.md`'s stack section updated to match.
+
+**Rejected:** Spring Boot 3.x, as originally specified.
+
+**Why:** Initializr no longer offers 3.x — the only options are 4.0.x and 4.1.x — which means
+3.x is past OSS support. Pinning it would mean hand-maintaining the parent version, running an
+unsupported branch, and answering "why are you on an EOL version?" in the interview this
+project exists to serve. Java 21 is unchanged; virtual threads (`spring.threads.virtual.enabled`)
+are the reason for it and Boot 4 supports them fine.
+
+Cost, worth knowing before debugging: Boot 4 reorganised starters and packages. `spring-boot-starter-web`
+is now `-webmvc`; test support is split into per-module `-test` starters; Testcontainers artifacts
+renamed (`testcontainers-postgresql`, not `postgresql`); and annotations moved into per-module
+namespaces — `AutoConfigureMockMvc` is now in `org.springframework.boot.webmvc.test.autoconfigure`.
+**Most tutorials and Stack Overflow answers will be 3.x and will not compile.** Prefer the jars
+on the classpath over search results when an import cannot be resolved.
+
+**Revisit when:** n/a.
+
+---
+
 <!-- Template — copy for each new decision
 
 ## N. Title

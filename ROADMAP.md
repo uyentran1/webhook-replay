@@ -13,7 +13,7 @@ Plan 14 weeks, expect 18. A missed week is not failure; four consecutive missed 
 ## Phase 0 — Design (week 1)
 
 - [x] **S1** Finish `DESIGN.md` §6 retry policy and §7 open problems (your own answers, not Claude's)
-- [ ] **S2** `git init`, Spring Boot skeleton, docker-compose (Postgres), Flyway wired, health endpoint, first commit
+- [x] **S2** `git init`, Spring Boot skeleton, docker-compose (Postgres), Flyway wired, health endpoint, first commit
 
 ## Phase 1 — Durable ingest and naive delivery (weeks 2–4)
 

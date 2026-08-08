@@ -15,6 +15,35 @@ Format: `## YYYY-MM-DD — Title` / **Symptom** / **Observed** / **Cause** / **F
 
 ---
 
+## 2026-08-08 — App talked to the wrong Postgres for 15 minutes
+
+**Symptom:** `./mvnw spring-boot:run` died on startup with Flyway reporting
+`FATAL: role "webhook" does not exist`, while `docker compose ps` showed the container
+**healthy** and its own healthcheck (`pg_isready -U webhook -d webhook_replay`) passing.
+
+**Observed:** `lsof -nP -iTCP:5432 -sTCP:LISTEN` showed two listeners — a Homebrew
+`postgresql@14` on `127.0.0.1:5432` and `[::1]:5432`, and OrbStack on `*:5432`. Testcontainers
+tests were green the whole time, which is what made it confusing: `./mvnw verify` passed and
+only `spring-boot:run` failed.
+
+**Cause:** Docker binds the wildcard address; a locally-installed Postgres binds loopback
+specifically. **A more specific bind wins**, so `localhost:5432` resolved to the Homebrew
+Postgres 14, which has no `webhook` role and no `webhook_replay` database. The compose
+container was listening the whole time and never received a connection. Testcontainers was
+unaffected because it assigns a random high port per run.
+
+**Fix:** Moved the compose host port to **5433** and defaulted `DB_PORT` to match, rather than
+stopping the Homebrew service — the project should not depend on what else is installed on the
+machine.
+
+**Learned:** A healthy container proves the container is healthy; it proves nothing about what
+the client connected to. The diagnostic that mattered was "who is listening on this port",
+not "is my container up". Also: a green test suite and a broken `run` is a *signal*, not a
+contradiction — it localises the fault to configuration that tests bypass, which here was the
+datasource URL that Testcontainers overrides via `@ServiceConnection`.
+
+---
+
 <!-- Example of the shape and level of detail to aim for. Delete once you have real entries.
 
 ## 2026-09-12 — One hanging endpoint starved every other delivery

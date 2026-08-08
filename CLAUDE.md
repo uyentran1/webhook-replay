@@ -45,7 +45,8 @@ want to attempt it first. If I confirm, go ahead.
 
 ## Stack
 
-- Java 21 (virtual threads), Spring Boot 3.x, Maven
+- Java 21 (virtual threads), Spring Boot 4.x, Maven (see `DECISIONS.md` #8 — 3.x was
+  dropped from Initializr as out of OSS support)
 - PostgreSQL 16 + Flyway. **Postgres is the queue** (`SELECT … FOR UPDATE SKIP LOCKED`).
   No Kafka, no RabbitMQ, no Redis unless a specific need is demonstrated — see
   `DECISIONS.md` #1.

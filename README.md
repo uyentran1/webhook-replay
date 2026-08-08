@@ -30,10 +30,17 @@ full problem statement and the invariants it guarantees.
 
 ## Quick start
 
+Requires Java 21 and a Docker daemon.
+
 ```bash
-docker compose up -d
-./mvnw spring-boot:run
+docker compose up -d          # Postgres 16 on host port 5433
+./mvnw spring-boot:run        # http://localhost:8080
+curl localhost:8080/health    # -> 200, {"status":"UP", ...}
+./mvnw verify                 # full build; tests use their own Postgres via Testcontainers
 ```
+
+Host port 5433 rather than 5432 is deliberate — see [BROKE.md](BROKE.md). Override with
+`DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` if you need to.
 
 <!-- TODO: register-an-endpoint + send-an-event curl example once the API exists -->
 

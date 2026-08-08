@@ -1,0 +1,28 @@
+# Local dev dependencies. Prometheus and Grafana join this file in week 10 (ROADMAP phase 4).
+# Tests do not use this — Testcontainers starts its own Postgres 16 per run.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: webhook-replay-postgres
+    environment:
+      POSTGRES_DB: webhook_replay
+      POSTGRES_USER: webhook
+      POSTGRES_PASSWORD: webhook
+    ports:
+      # Host port 5433, not 5432: a locally-installed Postgres binds 127.0.0.1:5432
+      # specifically, which wins over Docker's wildcard bind, so `localhost:5432`
+      # silently reaches the wrong database. See BROKE.md 2026-08-08.
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Without this, `docker compose up -d` returns before Postgres accepts
+      # connections and the app fails its first startup.
+      test: ["CMD-SHELL", "pg_isready -U webhook -d webhook_replay"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
