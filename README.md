@@ -20,7 +20,7 @@ full problem statement and the invariants it guarantees.
 ## What it does
 
 - **Durable ingest** — an event accepted with 202 is persisted before the response returns
-- **At-least-once delivery** with exponential backoff and full jitter
+- **At-least-once delivery** with an explicit retry schedule spanning ~28 hours
 - **Per-endpoint isolation** — one hanging receiver can't starve deliveries to others
 - **HMAC-SHA256 signatures** with timestamp tolerance for replay protection
 - **Circuit breaking** on persistently dead endpoints, with recovery probing
@@ -73,4 +73,4 @@ problem entirely.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

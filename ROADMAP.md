@@ -12,7 +12,7 @@ Plan 14 weeks, expect 18. A missed week is not failure; four consecutive missed 
 
 ## Phase 0 — Design (week 1)
 
-- [ ] **S1** Finish `DESIGN.md` §6 retry policy and §7 open problems (your own answers, not Claude's)
+- [x] **S1** Finish `DESIGN.md` §6 retry policy and §7 open problems (your own answers, not Claude's)
 - [ ] **S2** `git init`, Spring Boot skeleton, docker-compose (Postgres), Flyway wired, health endpoint, first commit
 
 ## Phase 1 — Durable ingest and naive delivery (weeks 2–4)
@@ -26,7 +26,7 @@ Plan 14 weeks, expect 18. A missed week is not failure; four consecutive missed 
 - [ ] **S2** Worker: claim loop with `SELECT … FOR UPDATE SKIP LOCKED`, POST via `HttpClient` with explicit timeouts, write `delivery_attempt` row, mark delivered/retrying.
 
 **Week 4**
-- [ ] **S1** Exponential backoff + full jitter. Unit-test the schedule.
+- [ ] **S1** Retry schedule table (`DESIGN.md` §6). Unit-test the schedule and attempt 8 → `dead`.
 - [ ] **S2** State machine hardening: lease expiry reaper, attempt cap → `dead`. Integration tests for each transition.
 
 > End of Phase 1: a correct, boring, working system. Tag it `v0.1-naive`.
