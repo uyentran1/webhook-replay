@@ -38,3 +38,20 @@ Do this in order:
    than the last 20 lines of code.
 
 6. Commit the doc updates, and tell me what's next session's first move in one sentence.
+
+7. **Shut down local infrastructure.** From the project root:
+
+   ```bash
+   docker compose down
+   ```
+
+   Never `down -v` unless I explicitly ask — that deletes the `pgdata` volume and the
+   database with it. Plain `down` removes the containers and keeps the data.
+
+   The point isn't tidiness. It's that every session then *starts* by running
+   `docker compose up -d`, which is the quickstart path in `README.md`. If that command
+   ever breaks, I find out in the first two minutes of a session rather than in week 14
+   while writing setup instructions for other people.
+
+   Note tests don't need it — Testcontainers starts its own Postgres, so `./mvnw verify`
+   passes with everything shut down. Only `./mvnw spring-boot:run` needs compose.

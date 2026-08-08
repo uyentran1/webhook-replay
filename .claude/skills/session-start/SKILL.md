@@ -14,9 +14,18 @@ Do this in order:
 2. `git log --oneline -10` and `git status` — tell me what branch I'm on and whether the
    tree is dirty. If it's dirty, that's a problem: last session should have ended clean.
    Show me the diff and help me decide whether to commit or discard before anything else.
-3. Run the build and tests. If anything is red, that's the session's first task —
+3. Bring up local infrastructure from the project root: `docker compose up -d`, then
+   `docker compose ps` to confirm it reports **healthy**. Session-end shuts this down, so
+   starting it here means the `README.md` quickstart path gets exercised every single
+   session — if it has rotted, I find out now rather than in week 14.
+4. Run the build and tests. If anything is red, that's the session's first task —
    say so plainly rather than proceeding to the planned work.
-4. Read any code files the next action touches, so you have them in context.
+
+   Testcontainers needs a running Docker daemon but *not* compose — it starts its own
+   Postgres. So if step 3 failed but the build is green, the fault is in compose config,
+   not in the code. A stopped Docker daemon is not a red build; check that before
+   assuming anything is broken.
+5. Read any code files the next action touches, so you have them in context.
 
 Then give me, in under 200 words:
 
