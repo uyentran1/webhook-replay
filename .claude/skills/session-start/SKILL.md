@@ -39,6 +39,10 @@ Then give me, in under 200 words:
 
 Then stop and wait. Don't start implementing.
 
+If any `LESSONS.md` entry bears directly on today's work, say so in one line before we
+start — not a recap of the file, just the one or two that are about to become relevant.
+Spaced repetition is the only reason that file is worth keeping.
+
 Remember which bucket the work falls into (see `CLAUDE.md`). If this session's work is in
 the "I drive" bucket — retry scheduling, fairness, ordering, circuit breaking, HMAC —
 your role is to help me write a failing test first and then review what I write. Say so

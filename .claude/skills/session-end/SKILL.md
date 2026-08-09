@@ -1,6 +1,6 @@
 ---
 name: session-end
-description: Wrap up a work session on this project. Runs the full check, commits, and rewrites NEXT.md, BROKE.md, DECISIONS.md, and ROADMAP.md so the next session can start cold. Use in the last 20 minutes of every session.
+description: Wrap up a work session on this project. Runs the full check, commits, and rewrites NEXT.md, BROKE.md, DECISIONS.md, LESSONS.md, and ROADMAP.md so the next session can start cold. Use in the last 20 minutes of every session.
 ---
 
 # Session end
@@ -37,9 +37,27 @@ Do this in order:
    Don't skip these because the session ran long. If we're out of time, these matter more
    than the last 20 lines of code.
 
-6. Commit the doc updates, and tell me what's next session's first move in one sentence.
+6. **Propose `LESSONS.md` entries — don't ask me for them.** I cannot reliably report my
+   own misconceptions; if I'd known something was wrong I wouldn't have believed it. You
+   observed them, so you write the candidate entries and I confirm or correct.
 
-7. **Shut down local infrastructure.** From the project root:
+   Go back over the session and collect:
+   - anything I stated that you corrected — a wrong number, an inverted concept, a
+     confused term (these are the valuable ones)
+   - anything I asked "what is X?" or "why do we do X?" about
+   - anything I guessed right but for shaky reasons
+
+   Format per entry: **Corrected** (I believed X, actually Y) or **Learned** (didn't know
+   X), dated, filed under the matching theme heading, with *why it matters* — the
+   consequence, not just the fact. Include the sanity check or rule of thumb that would
+   have caught it. Keep each to a few lines.
+
+   Be accurate rather than kind. A softened entry is a useless one. Equally, don't invent
+   misconceptions to fill the file — some sessions won't produce any, and that's fine.
+
+7. Commit the doc updates, and tell me what's next session's first move in one sentence.
+
+8. **Shut down local infrastructure.** From the project root:
 
    ```bash
    docker compose down

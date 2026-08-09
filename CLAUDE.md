@@ -99,6 +99,10 @@ deliberately changing scope:
 - `DECISIONS.md` — one entry per non-obvious choice, with what was rejected.
 - `BROKE.md` — dated log of what failed, what I observed, what I changed. This becomes
   the best section of the README. Treat entries here as valuable, never delete them.
+- `LESSONS.md` — what *I* misunderstood, and concepts I had to ask about. Distinct from
+  `BROKE.md`: that file is what the **system** did and wants numbers; this one is what
+  **I** believed and wants the correction. Revision material for interviews. Never delete.
+  I can't reliably self-report these — you noticed them, so **you propose the entries**.
 - `README.md` — mostly written, but carries two `TODO (week 14)` blocks that are real
   deliverables: the architecture diagram, and the failure-modes section built from
   `BROKE.md`. Don't let them get lost.
