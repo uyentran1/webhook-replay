@@ -90,6 +90,22 @@ edit an applied migration (checksums) — fix forward with `V2__`.
 The build said `BUILD SUCCESS` and the file was correct all along. *General lesson: read the
 build result line, not the most alarming-sounding line.*
 
+**2026-08-09 — Learned: the IDE's project model is a separate artifact from Maven's classpath.**
+IntelliJ red-lined `@SpringBootApplication` and every `org.springframework` import as "cannot
+resolve" while `./mvnw verify` was green. Both were telling the truth: Maven builds its classpath
+from `pom.xml` and `~/.m2` and hands `javac` an explicit `-classpath`; IntelliJ builds its own
+model at *import* time and never consults Maven for editor analysis. **A red editor with a green
+`./mvnw verify` means the IDE model is stale or absent, and is never evidence about the build.**
+Root cause: opening the *folder* gives you a generic Java project with an empty classpath — only
+opening `pom.xml` itself triggers a Maven import. Installing the Maven plugin doesn't do it, and
+"Reload All Maven Projects" is a silent no-op when no pom is registered. *Corollary: for IDE
+state, check disk, not the UI.* `.idea/` is hidden by the IDE (2025.x special-cases it out of the
+Project view entirely — the **Project Files** scope does *not* reveal it; use the built-in
+terminal), by Finder (dotfile), and by `.gitignore` — and on 2025.x the module
+model isn't in `.idea/` at all, it's under
+`~/Library/Caches/JetBrains/<IDE>/projects/<name>.<hash>/external_build_system/`. The tell that
+an import actually ran is `.idea/compiler.xml` naming the module.
+
 ## Shell and environment
 
 **2026-08-08 — Learned: what `$PATH` is.**
