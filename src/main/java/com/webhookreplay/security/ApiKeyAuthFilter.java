@@ -31,10 +31,10 @@ class ApiKeyAuthFilter extends OncePerRequestFilter {
 
 	private static final String BEARER = "Bearer ";
 
-	private final ApiKeyProperties apiKeys;
+	private final ApiKeyProperties apiKeyProperties;
 
-	ApiKeyAuthFilter(ApiKeyProperties apiKeys) {
-		this.apiKeys = apiKeys;
+	ApiKeyAuthFilter(ApiKeyProperties apiKeyProperties) {
+		this.apiKeyProperties = apiKeyProperties;
 	}
 
 	@Override
@@ -43,7 +43,7 @@ class ApiKeyAuthFilter extends OncePerRequestFilter {
 
 		String header = request.getHeader(HttpHeaders.AUTHORIZATION);
 		if (header != null && header.startsWith(BEARER)) {
-			apiKeys.tenantFor(header.substring(BEARER.length()))
+			apiKeyProperties.tenantFor(header.substring(BEARER.length()))
 					// No authorities: v1 has no roles or scopes (§9 rules out RBAC), so
 					// authentication and authorisation collapse into the same question —
 					// is this a known key?

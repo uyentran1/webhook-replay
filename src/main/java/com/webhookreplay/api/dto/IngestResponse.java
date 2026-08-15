@@ -1,4 +1,4 @@
-package com.webhookreplay.api;
+package com.webhookreplay.api.dto;
 
 import java.util.UUID;
 

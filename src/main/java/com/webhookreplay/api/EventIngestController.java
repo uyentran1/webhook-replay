@@ -1,5 +1,7 @@
 package com.webhookreplay.api;
 
+import com.webhookreplay.api.dto.IngestRequest;
+import com.webhookreplay.api.dto.IngestResponse;
 import com.webhookreplay.service.EventIngestService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -23,10 +25,10 @@ import java.util.UUID;
 @RequestMapping("/v1/events")
 class EventIngestController {
 
-	private final EventIngestService ingest;
+	private final EventIngestService eventIngestService;
 
-	EventIngestController(EventIngestService ingest) {
-		this.ingest = ingest;
+	EventIngestController(EventIngestService eventIngestService) {
+		this.eventIngestService = eventIngestService;
 	}
 
 	/**
@@ -40,7 +42,8 @@ class EventIngestController {
 		// payload.toString() is the serialisation we store, sign in week 7, and send. It is
 		// not byte-identical to what the sender wrote -- the jsonb column normalises key
 		// order and whitespace regardless -- and it does not need to be. See Event.payload.
-		return new IngestResponse(ingest.ingest(tenantId, request.type(), request.payload().toString()));
+		return new IngestResponse(
+				eventIngestService.ingest(tenantId, request.type(), request.payload().toString()));
 	}
 
 }

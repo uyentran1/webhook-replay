@@ -1,4 +1,4 @@
-package com.webhookreplay.api;
+package com.webhookreplay.api.dto;
 
 // Jackson 3 (Boot 4) moved the base package from com.fasterxml.jackson to tools.jackson.
 // Only the annotations kept the old coordinates, which is why both appear on the classpath.

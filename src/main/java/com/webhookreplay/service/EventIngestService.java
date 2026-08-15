@@ -27,16 +27,17 @@ import java.util.UUID;
 @Service
 public class EventIngestService {
 
-	private final EventRepository events;
+	private final EventRepository eventRepository;
 
-	private final EndpointRepository endpoints;
+	private final EndpointRepository endpointRepository;
 
-	private final DeliveryRepository deliveries;
+	private final DeliveryRepository deliveryRepository;
 
-	EventIngestService(EventRepository events, EndpointRepository endpoints, DeliveryRepository deliveries) {
-		this.events = events;
-		this.endpoints = endpoints;
-		this.deliveries = deliveries;
+	EventIngestService(EventRepository eventRepository, EndpointRepository endpointRepository,
+			DeliveryRepository deliveryRepository) {
+		this.eventRepository = eventRepository;
+		this.endpointRepository = endpointRepository;
+		this.deliveryRepository = deliveryRepository;
 	}
 
 	/**
@@ -44,14 +45,14 @@ public class EventIngestService {
 	 */
 	@Transactional
 	public UUID ingest(UUID tenantId, String type, String payload) {
-		Event event = events.save(new Event(tenantId, type, payload));
+		Event event = eventRepository.save(new Event(tenantId, type, payload));
 
-		List<Endpoint> matching = endpoints.findMatching(tenantId, type);
+		List<Endpoint> matching = endpointRepository.findMatching(tenantId, type);
 		// Zero matches is a successful ingest, not an error. I2 promises an attempt per
 		// *active, matching* endpoint, and there may be none — a tenant that has registered
 		// nothing yet still gets a 202 and a durable event, which is what makes it possible
 		// to register an endpoint afterwards and replay history to it.
-		deliveries.saveAll(matching.stream().map(endpoint -> new Delivery(event, endpoint)).toList());
+		deliveryRepository.saveAll(matching.stream().map(endpoint -> new Delivery(event, endpoint)).toList());
 
 		return event.getId();
 	}
