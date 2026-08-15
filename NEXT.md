@@ -5,84 +5,78 @@
 > Bad: "work on the worker." Good: "add jitter to `RetryScheduler.nextAttemptAt` — the
 > test at `RetrySchedulerTest:47` is written and currently failing."
 
-**Last session:** 2026-08-15 — week 2 S1: `V1__initial_schema.sql`, the four JPA entities +
-repositories, and `SchemaMappingIT`. **Week 2 S1 is done.**
+**Last session:** 2026-08-15 — week 2 S2: `POST /v1/events`, Spring Security API-key auth,
+fan-out in one transaction. **Week 2 is done.**
 
-**Where things stand:** On branch `week-02-schema`, three commits ahead of `main`, tree clean,
-`./mvnw verify` green with 5 tests. Not merged — the convention is one branch per roadmap week
-and S2 is still ahead, so merge to `main` when S2 lands.
+**Where things stand:** On branch `week-02-schema`, tree clean, `./mvnw verify` green with
+**16 tests**. Verified end-to-end against the real app, not just MockMvc: 401 without a key,
+202 with one, and the `delivery` row visible in psql afterwards.
 
-V1 creates `endpoint`, `event`, `delivery`, `delivery_attempt` with PKs, FKs and
-`unique (tenant_id, idempotency_key)`. No performance indexes, per `DESIGN.md` §4 — but note
-five indexes exist anyway, because a UNIQUE constraint *is* an index. Entities are proven
-against the migration by `ddl-auto=validate` at context startup, so a drift fails the whole
-suite, not one test.
+Week 2 is complete, so **this branch should merge to `main`** — that did not happen last
+session and is the first thing to do.
 
 **Next action:**
-Week 2 S2 — `POST /v1/events`. Bigger than a single sitting; do it in this order, committing
-at each step:
 
-1. **The failing test first.** New `EventIngestIT` alongside `SchemaMappingIT` (same
-   `@Import(TestcontainersConfiguration.class)` + `@SpringBootTest` + `@AutoConfigureMockMvc`
-   setup that `HealthEndpointIT` already uses). Assert `POST /v1/events` returns **202** with
-   an `event_id` body, and that one `event` row plus one `delivery` row per matching active
-   endpoint exist afterwards. It should fail with 404 before any controller exists.
-2. **API-key auth filter.** Static per-tenant bearer token (`DESIGN.md` §3), resolving to the
-   `tenant_id` that every query is scoped by. Decide where the tenant→key mapping lives — a
-   config property is fine for v1 and there is deliberately no tenant table.
-3. **Ingest + fan-out in one transaction.** This is the point of `DECISIONS.md` #1: persisting
-   the `event` and its `delivery` rows is a single commit, so there is no dual-write to
-   diverge. Invariant I1 says durable *before* the 202 returns.
-4. **Fan-out matching.** Deliver to endpoints where `state = 'active'` **and**
-   (`event_types is null` **or** the event's type is in `event_types`). Null means all types;
-   an empty array would mean none. `Endpoint.eventTypes` already carries that distinction.
+1. **Merge `week-02-schema` to `main`** and branch `week-03-endpoints`. Week 2 S1 and S2 are
+   both done; the convention is one branch per roadmap week.
+2. **Week 3 S1 — `POST/GET /v1/endpoints`.** Registration returns the signing secret, once.
+   Same shape as this session: write `EndpointApiIT` first, then the controller.
+   - The `signing_secret` is generated server-side and **shown only at registration**
+     (DESIGN.md §3). Decide how it is generated — `SecureRandom`, not `Math.random` or
+     `UUID.randomUUID`, and decide the length and the `whsec_` prefix convention.
+   - `GET /v1/endpoints` must never return the secret. That is the test worth writing first.
+   - Reuse `@AuthenticationPrincipal UUID tenantId` for scoping, exactly as
+     `EventIngestController` does — every query filters by tenant.
+   - This unblocks the README TODO at the direct-insert snippet, which is already narrowed
+     and waiting for it.
 
 **Blocked on:** nothing.
 
-**Decide before week 3 (found by `/code-review`, deliberately not fixed):**
+**Add to the session ritual (from today's `BROKE.md` entry):** `/session-start` runs
+`docker compose up -d` and `./mvnw verify`, and **neither starts the app**. That let a broken
+compose database survive an entire session. Add a smoke check — `spring-boot:run`, curl
+`/health`, kill it — because Testcontainers structurally cannot catch this.
 
-- **`unique (delivery_id, attempt_no)` on `delivery_attempt` collides with replay.** This is
-  the important one, and it's yours to call — it's delivery-state-machine territory. §5 has
-  `dead --replay--> pending` on the *same* row, so a replayed delivery either resets
-  `attempt_count` to 0 and then violates this constraint on its next attempt, or keeps
-  `attempt_count = 8` and goes straight back to `dead` without a request. Options: drop the
-  constraint (back to `DESIGN.md` §4 as written); add a `replay_generation` column to the key;
-  or make replay insert a fresh `delivery` row. The constraint was added beyond §4 to make a
-  double-write of attempt 3 a violation rather than a silent duplicate — that value is real,
-  but so is the collision.
-- **`delivery.updated_at` never updates.** Set at construction, `not null default now()` fires
-  only on INSERT, and there is no `@UpdateTimestamp` or trigger — so every week-3 state
-  transition leaves it at creation time. Recommendation: a **DB trigger**, not
-  `@UpdateTimestamp`, because the claim query is native SQL and would bypass the JPA callback
-  entirely. Land it in the same migration as the claim query.
-- **FK child columns are unindexed.** Postgres does not auto-index them, so the RESTRICT check
-  on `delete from endpoint` seq-scans `delivery`, and a CASCADE from `event` seq-scans
-  `delivery` then `delivery_attempt`. Low practical impact while endpoints are soft-deleted
-  and nothing is pruned, but these three are justified by constraints that exist *today*
-  rather than by a week-3 guess — which is a real exception to the "no indexes yet" rule.
-- **`on delete cascade` from `event` contradicts the audit story.** `delivery_attempt` is
-  documented as never deleted, and `endpoint_id` uses RESTRICT to protect exactly that, but a
-  retention job doing `delete from event where created_at < …` (`DESIGN.md` §10) would erase
-  the evidence behind I5. The two FKs encode opposite policies for the same data.
+**Decide before week 4 (still open, carried from last session):**
+
+- **`unique (delivery_id, attempt_no)` on `delivery_attempt` collides with replay.** Still
+  yours to call, and now closer: §5 has `dead --replay--> pending` on the *same* row, so a
+  replayed delivery either resets `attempt_count` to 0 and violates the constraint on its
+  next attempt, or keeps `attempt_count = 8` and goes straight back to `dead` without a
+  request. Options: drop the constraint; add a `replay_generation` column to the key; or make
+  replay insert a fresh `delivery` row.
+- **`delivery.updated_at` never updates.** `not null default now()` fires only on INSERT and
+  there is no `@UpdateTimestamp` or trigger, so every week-3 state transition leaves it at
+  creation time. Recommendation stands: a **DB trigger**, not `@UpdateTimestamp`, because the
+  claim query is native SQL and would bypass the JPA callback. Land it with the claim query.
+- **FK child columns are unindexed.** `delete from endpoint` seq-scans `delivery` for the
+  RESTRICT check; a CASCADE from `event` seq-scans `delivery` then `delivery_attempt`.
+- **`on delete cascade` from `event` contradicts the audit story.** A retention job doing
+  `delete from event where created_at < …` (§10) would erase the evidence behind I5, while
+  `endpoint_id` uses RESTRICT to protect exactly that.
 
 **Parked / noticed but not doing:**
-- `DeliveryState.valueOf` throws from inside Hibernate result-set processing on an unknown
-  label. During a rolling deploy the CHECK swap lands first and old instances die on the new
-  state — so the rule is deploy code before migration, which should be written down.
-- `GenerationType.IDENTITY` on `delivery_attempt` disables Hibernate JDBC insert batching (the
-  id is only known post-INSERT). It's the highest-write table in the system and this will show
-  in the week-5 load test. `SEQUENCE` with a pooled optimizer keeps the same `bigserial` column
-  and restores batching. Also: the three UUID PKs use random v4, which is the exact index
-  fragmentation `delivery_attempt` avoided on purpose — `@UuidGenerator(style = TIME)` gives
-  UUIDv7 with no schema change.
+- **Week 8 will have to change a test.** `EventIngestIT.doesNotDeliverToDisabledOrCircuitOpenEndpoints`
+  pins today's behaviour: an event arriving while a breaker is open produces **no delivery row
+  at all**. DESIGN.md §7c wants those deliveries *held*. The predicate to revisit is
+  `state = 'active'` in `EndpointRepository.findMatching`.
+- **`Idempotency-Key` is accepted and ignored.** The column exists and the header is not read.
+  Storing it without week 9's dedupe would turn a duplicate POST into a 500 from a constraint
+  violation, which is worse. Week 9 owns the header and the 409/replayed-response behaviour.
 - No `check ((state = 'in_flight') = (locked_at is not null))` on `delivery`, and no
-  `check (event_types is null or cardinality(event_types) > 0)` on `endpoint`. Both invariants
-  are currently documented in three places and enforced in none.
-- `management.endpoint.health.show-details=always` leaks the absolute filesystem path, free
-  disk, and DB details on an unauthenticated `/health`. Change to `when-authorized` by week 14.
-- `README.md` still carries three `TODO` blocks: the curl example (unblocked once S2 lands),
-  the architecture diagram, and the failure-modes section (both week 14).
-- Spring Boot 4 moved a lot of packages. Most tutorials are 3.x and won't compile. Grep the
-  jars on the classpath rather than searching the web — `DECISIONS.md` #8 lists what moved.
+  `check (event_types is null or cardinality(event_types) > 0)` on `endpoint`.
+- `management.endpoint.health.show-details=always` leaks the filesystem path, free disk and DB
+  details on an unauthenticated `/health`. Now properly fixable — Security is on the classpath,
+  so `when-authorized` finally means something. Week 14.
+- `DeliveryState.valueOf` throws from inside Hibernate result-set processing on an unknown
+  label, so the rule is deploy code before migration. Should be written down.
+- `GenerationType.IDENTITY` on `delivery_attempt` disables Hibernate JDBC insert batching, on
+  the highest-write table; this will show in the week-5 load test. `SEQUENCE` with a pooled
+  optimizer keeps the same `bigserial` column. The three UUID PKs use random v4 —
+  `@UuidGenerator(style = TIME)` gives UUIDv7 with no schema change.
+- Boot 4 moved a lot of packages and Jackson 3 moved to `tools.jackson`. Grep the jars on the
+  classpath rather than searching the web; most tutorials are 3.x and won't compile.
+- `application.properties` is deliberately pure ASCII — Boot reads `.properties` as
+  ISO-8859-1, so non-ASCII in a *value* would corrupt silently.
 - A Homebrew `postgresql@14` owns `localhost:5432` on this machine, which is why compose
   uses 5433.

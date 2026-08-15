@@ -44,6 +44,42 @@ datasource URL that Testcontainers overrides via `@ServiceConnection`.
 
 ---
 
+## 2026-08-15 — The dev database was broken for a whole session and nothing noticed
+
+**Symptom:** `./mvnw spring-boot:run` failed at startup with Flyway reporting
+`PSQLException: ERROR: relation "endpoint" already exists`, on a branch where
+`./mvnw verify` had just passed 16 tests.
+
+**Observed:** In the compose database, all four tables present, `flyway_schema_history`
+present but with **0 rows**, and **0 rows in all four tables**. So Flyway believed no
+migration had ever been applied and tried to create tables that were already there. The
+breakage had been latent for **one full session** — week 2 S1 ended green and committed, and
+nothing between then and now ran the application.
+
+**Cause:** V1 was edited in place last session, which is correct per the rule in `LESSONS.md`
+("can I drop every database this has been applied to? If yes, edit it") — but the rule was
+only half-applied. Editing an applied migration breaks Flyway's checksum; clearing the
+history row makes that error go away, and the tables were left behind. The database was then
+in a state no code path could reconcile.
+
+**Fix:** Dropped the four empty tables and let Flyway apply V1 cleanly. Deliberately *not*
+`docker compose down -v` — the volume was not the problem, and the narrower action is the one
+that fits the fault.
+
+**Learned:** The test suite structurally cannot detect this. Testcontainers starts a fresh
+Postgres per run, so `./mvnw verify` never touches the compose database — which is exactly
+what makes it a good test harness and exactly why it is blind here. **This is the second
+entry in this file with the same shape: green tests, broken `spring-boot:run`.** The
+2026-08-08 entry was the first. In both cases the fault lived in configuration or state that
+Testcontainers overrides.
+
+*The ritual gap this exposes:* `/session-start` runs `docker compose up -d` and `./mvnw
+verify`, and **neither starts the app**. A compose database can therefore stay broken
+indefinitely. Worth adding a `spring-boot:run` smoke check — start it, curl `/health`, kill
+it — to session-start, since that is the only thing that exercises the real datasource.
+
+---
+
 <!-- Example of the shape and level of detail to aim for. Delete once you have real entries.
 
 ## 2026-09-12 — One hanging endpoint starved every other delivery
