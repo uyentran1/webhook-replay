@@ -89,8 +89,17 @@ class SchemaMappingIT {
 		assertThat(reloaded.getCircuitOpenedAt()).isNull();
 
 		Event reloadedEvent = events.findById(event.getId()).orElseThrow();
-		assertThat(reloadedEvent.getPayload()).contains("\"order_id\"");
 		assertThat(reloadedEvent.getIdempotencyKey()).isEqualTo("idem-1");
+
+		// Asserted DB-side on purpose. Reading the payload back through Java proves nothing:
+		// it goes out and comes back through the same mapper, so it round-trips identically
+		// even if the column holds a jsonb *string* containing JSON rather than a jsonb
+		// object. That failure is invisible from here and only surfaces in week 12, the first
+		// time a `payload ->> '...'` query returns nothing.
+		assertThat(jdbc.queryForObject("select jsonb_typeof(payload) from event where id = ?",
+				String.class, event.getId())).isEqualTo("object");
+		assertThat(jdbc.queryForObject("select payload ->> 'order_id' from event where id = ?",
+				String.class, event.getId())).isEqualTo("42");
 
 		Delivery reloadedDelivery = deliveries.findById(delivery.getId()).orElseThrow();
 		assertThat(reloadedDelivery.getState()).isEqualTo(DeliveryState.PENDING);
@@ -141,6 +150,16 @@ class SchemaMappingIT {
 		Event first = new Event(tenantId, "order.paid", "{}");
 		first.setIdempotencyKey("idem-dup");
 		events.save(first);
+		entityManager.flush();
+
+		// The per-tenant half, and the whole reason tenant_id is in the constraint: a second
+		// customer must be free to pick a key the first one already used. Narrowing the
+		// constraint to unique (idempotency_key) would break ingest for every tenant after
+		// the first, and without this line the test would stay green while it happened.
+		// Written before the failing save below, which poisons the transaction.
+		Event otherTenant = new Event(UUID.randomUUID(), "order.paid", "{}");
+		otherTenant.setIdempotencyKey("idem-dup");
+		events.save(otherTenant);
 		entityManager.flush();
 
 		Event second = new Event(tenantId, "order.paid", "{}");

@@ -9,10 +9,21 @@
 -- throughput on every insert. They arrive with the queries that need them.
 --
 -- States are `text` with a CHECK rather than a Postgres ENUM type. ENUM buys a little
--- storage and ordering; it costs an ALTER TYPE to add a value, which historically could
--- not run inside a transaction and so fights Flyway's per-migration transaction. Adding a
--- delivery state is a plausible future migration; text + CHECK makes that a one-line
+-- storage and definition-order sorting. It costs two things, verified against this PG 16:
+-- a value added with ALTER TYPE ... ADD VALUE cannot be *used* until that transaction
+-- commits ("New enum values must be committed before they can be used"), so a migration
+-- cannot add a state and backfill rows into it in one step; and there is no
+-- ALTER TYPE ... DROP VALUE at all, in any version, so removing or renaming a state means
+-- rebuilding the type and rewriting the column.
+--
+-- DESIGN.md §7c describes deliveries being *held* while a breaker is open, so a sixth
+-- delivery state is a plausible week-8 migration. text + CHECK keeps that a one-line
 -- constraint swap.
+--
+-- Consequence, priced in: the lowercase labels don't match the Java constant names, so
+-- @Enumerated(STRING) can't be used and the mapping goes through an AttributeConverter.
+-- Uppercase labels would delete those two classes at the cost of less idiomatic SQL.
+-- Decided in favour of the SQL; see DECISIONS.md #9.
 
 
 create table endpoint (
