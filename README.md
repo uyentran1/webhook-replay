@@ -42,7 +42,42 @@ curl localhost:8080/health    # -> 200, {"status":"UP", ...}
 Host port 5433 rather than 5432 is deliberate — see [BROKE.md](BROKE.md). Override with
 `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` if you need to.
 
-<!-- TODO: register-an-endpoint + send-an-event curl example once the API exists -->
+### Sending an event
+
+Senders authenticate with a static per-tenant API key. The development keys are in
+`application.properties`; `sk_test_alice` maps to tenant `1111…`.
+
+```bash
+curl -i -X POST localhost:8080/v1/events \
+  -H 'Authorization: Bearer sk_test_alice' \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"order.paid","payload":{"order_id":42,"amount":"9.99"}}'
+
+# HTTP/1.1 202
+# {"event_id":"1eeefe3a-8b2b-4a8b-8b18-293351e063b4"}
+```
+
+The 202 means the event and one `delivery` row per matching endpoint are **committed**, not
+that anything has been delivered yet — that is invariant I1, and it is the whole point of
+keeping the queue in Postgres. Check the fan-out:
+
+```bash
+docker compose exec postgres psql -U webhook -d webhook_replay -c \
+  'select d.state, e.type, ep.url from delivery d
+     join event e on e.id = d.event_id
+     join endpoint ep on ep.id = d.endpoint_id;'
+```
+
+<!-- TODO (week 3): replace the direct insert below with a POST /v1/endpoints example
+     once endpoint registration exists. -->
+
+Until `POST /v1/endpoints` lands in week 3, register a receiver by inserting one:
+
+```bash
+docker compose exec postgres psql -U webhook -d webhook_replay -c \
+  "insert into endpoint (tenant_id, url, signing_secret)
+   values ('11111111-1111-1111-1111-111111111111', 'https://example.test/hooks', 'whsec_demo');"
+```
 
 ## Architecture
 
