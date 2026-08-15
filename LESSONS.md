@@ -106,6 +106,150 @@ model isn't in `.idea/` at all, it's under
 `~/Library/Caches/JetBrains/<IDE>/projects/<name>.<hash>/external_build_system/`. The tell that
 an import actually ran is `.idea/compiler.xml` naming the module.
 
+**2026-08-15 — Learned: JPA, Hibernate and Spring Data JPA are three different things.**
+JPA is a *specification* — annotations and interfaces, no behaviour. Hibernate is the
+implementation that does the work. Spring Data JPA sits on top and generates repository
+implementations from interface declarations. Worth keeping distinct because the answer to "why
+is your claim query native SQL?" depends on it: Spring Data derives queries from method names
+and cannot express `FOR UPDATE SKIP LOCKED` or a window function, so week 3's claim loop drops
+to `@Query(nativeQuery = true)` while CRUD stays derived. *The defensible line: ORM for the
+CRUD, hand-written SQL for the queue.*
+
+**2026-08-15 — Learned: Spring's `DataIntegrityViolationException` is a translation, applied
+at the repository proxy boundary.** Surfaced from a failing assertion in `SchemaMappingIT`:
+`entityManager.flush()` threw Hibernate's native `ConstraintViolationException` instead.
+Hibernate throws vendor-flavoured exceptions; Spring translates them into its own
+vendor-neutral hierarchy, but only for calls that pass through a repository proxy. Going
+straight to the `EntityManager` goes around the translator. *Consequence: the exception the
+week-9 ingest path catches depends on how it triggers the flush. Prefer `saveAndFlush` in
+tests, so the test sees what production will.*
+
+**2026-08-15 — Learned: Boot 4 ships Jackson 3, which moved its base package.**
+`com.fasterxml.jackson.databind.JsonNode` does not exist; it is
+`tools.jackson.databind.JsonNode`. The annotations alone kept the old coordinates, so both
+`tools/jackson` 3.1.4 and `com/fasterxml/jackson/jackson-annotations` 2.21 sit on the
+classpath together and neither is wrong. *Same lesson as the Boot 4 package moves in
+`DECISIONS.md` #8: grep the jar, don't trust the tutorial.*
+
+**2026-08-15 — Learned: `.properties` files are read as ISO-8859-1, not UTF-8.**
+Verified in `spring-boot-4.1.0.jar` — `OriginTrackedPropertiesLoader` uses
+`StandardCharsets.ISO_8859_1`, following the `java.util.Properties` spec. So a UTF-8 em-dash
+(3 bytes) arrives as three characters, which is where the stray `â` in my comments came from.
+Harmless in a comment, **silent corruption in a value** — a non-ASCII password or description
+would be mangled with no error. `application.properties` is now deliberately pure ASCII.
+*Rule: `.properties` is an ASCII format; put anything else in YAML, which is UTF-8.*
+
+## Postgres, schema and migrations
+
+**2026-08-15 — Learned: DDL vs DML, and that Postgres DDL is transactional.**
+DDL defines structure (`CREATE`/`ALTER`/`DROP TABLE`, constraints, indexes); DML moves rows
+(`SELECT`/`INSERT`/`UPDATE`/`DELETE`). A Flyway migration is a file of DDL. The part that
+matters operationally: Postgres wraps DDL in transactions, so a migration that creates three
+tables and fails on the fourth rolls all three back — you never hand-repair half a schema.
+MySQL does not do this. *A small, real dividend of the Postgres-only decision (`DECISIONS.md` #1).*
+
+**2026-08-15 — Corrected: switching the column to a Postgres `ENUM` would let me delete the
+state converters.** It would not. Postgres enum labels are **case-sensitive**, and Hibernate
+binds a Java enum by its constant name — `PENDING`, uppercase. A native `ENUM` with lowercase
+labels fails exactly as `@Enumerated(STRING)` does, just with a different error message. The
+converters do **case translation**; the column type is not what forces them. The knob that
+actually removes them is the *label case*, under either column type. *Rule of thumb: before
+changing a type to delete a class, name the exact line that becomes unnecessary. If you can't,
+the class is doing a different job than you think.* Full reasoning in `DECISIONS.md` #9.
+
+**2026-08-15 — Corrected: "never edit an applied migration, fix forward with `V2__`" applies
+everywhere.** It applies to migrations that have **escaped your machine**. The rule exists
+because Flyway checksums an applied migration and refuses a mismatch — which only bites where
+you cannot drop the database. `V1` on an unmerged branch, applied to a local dev DB and to
+throwaway Testcontainers instances, does not qualify: editing it and recreating the schema is
+correct, and shipping a `V1`+`V2` pair that adds a column and immediately changes it, before
+either ever ran anywhere real, bakes a permanent scar into the schema history for nothing.
+*Test to apply: can I drop every database this has been applied to? If yes, edit it.*
+
+**2026-08-15 — Learned: a `UNIQUE` constraint *is* an index.**
+`DESIGN.md` §4 says no indexes until a query justifies them, and V1 obeys that — yet it
+created five, because Postgres has no way to enforce uniqueness or a primary key other than
+building a unique index. *So "no indexes yet" is shorthand for "no indexes chosen for read
+performance." Verify what actually exists with `select tablename, indexname from pg_indexes`,
+not by reading the migration.*
+
+**2026-08-15 — Learned: what Postgres 16 really costs you on `ENUM`.**
+Checked against the running container rather than assumed, after I asserted an outdated
+restriction. `ALTER TYPE … ADD VALUE` **does** run inside a transaction — that was lifted in
+PG 12 — but the new value cannot be *used* until the transaction commits, so one migration
+cannot add a state and backfill rows into it. And there is no `ALTER TYPE … DROP VALUE` in any
+version, so removing a state means rebuilding the type and rewriting the column. *Both facts
+took 30 seconds to check against a live database, which is faster than being wrong about them.*
+
+**2026-08-15 — Corrected: I had written into `Event.payload`'s javadoc that the stored bytes
+must be exactly the bytes the sender sent, so the §8 signature stays valid.** Both halves
+were wrong. It is unachievable — `jsonb` normalises on write, verified against the running
+PG 16: `'{"b":1, "a":2, "a":3}'::jsonb` returns `{"a": 3, "b": 1}`, keys reordered,
+whitespace dropped, duplicate collapsed. And it is unnecessary — a receiver can only verify a
+signature against the body it was handed, so the invariant that matters is **the bytes we
+sign are the bytes we send**, which is self-consistent regardless of storage. Clinching
+argument: week 9 replay *must* re-sign with a fresh timestamp or the receiver rejects it as a
+replay attack, so a replayed delivery already carries different signed bytes than the
+original — preserving ingest bytes could never have paid off. *Sanity check: before writing
+an invariant into a comment, ask which component could actually observe a violation. Nothing
+downstream can see the sender's original bytes, so nothing could ever have depended on them.*
+
+## Spring Security and web auth
+
+**2026-08-15 — Learned: authentication and authorisation are two separate steps, and the
+gap between them is why my filter never rejects anything.**
+`ApiKeyAuthFilter` reads the bearer key, resolves a tenant and puts an `Authentication` in
+the `SecurityContext`. That is *all* it does — it makes no access decision. Much later in the
+chain, `AuthorizationFilter` compares the rules from `authorizeHttpRequests` against whatever
+is in that context, and `ExceptionTranslationFilter` turns a failure into our JSON 401 via
+the `AuthenticationEntryPoint`. **Consequence: if the filter threw on a missing header,
+`/health` would 401 too, because the filter runs before anything knows the path is public.**
+The filter reports; the rules decide. *Rule of thumb: a filter that rejects is a filter that
+has hardcoded an authorisation policy in the wrong place.*
+
+**2026-08-15 — Learned: Spring Security is one servlet `Filter`, not many.**
+Boot registers a single `FilterChainProxy`; the dozen "filters" live inside it as an ordered
+list, which is why `addFilterBefore(..., UsernamePasswordAuthenticationFilter.class)` is
+positioning within that list rather than in Tomcat's. The tenant then reaches the controller
+via `@AuthenticationPrincipal`, an argument resolver that reads
+`SecurityContextHolder.getContext().getAuthentication().getPrincipal()`. Our principal *is*
+the tenant UUID, which is the whole isolation story: a sender cannot name a tenant, so it
+cannot name someone else's.
+
+**2026-08-15 — Corrected: I expected adding the security starter to break `/health`. It
+didn't, and the reason is the important part.** Boot's
+`ManagementWebSecurityAutoConfiguration` ships a chain that permits health and secures
+everything else. It is `@ConditionalOnMissingBean(SecurityFilterChain.class)` — so it backs
+off the moment you declare your own chain. **Adding the dependency was safe; declaring the
+chain is what would have silently closed `/health` to the load balancer.** *General shape:
+Boot auto-configuration is not a floor you build on top of, it is a default that disappears
+entirely once you supply the same bean. Ask what an auto-config was doing for you before
+replacing it.*
+
+**2026-08-15 — Learned: what "signing" a webhook actually means.**
+HMAC-SHA256 over `timestamp . body` with the per-endpoint `signing_secret`, sent as a header
+alongside an unmodified body. It answers two questions at once: authenticity (only a holder
+of the secret could produce it) and integrity (not a byte changed). The timestamp is *inside*
+the signed material so a captured request can't be replayed forever, and it must also be sent
+as its own header or the receiver can't recompute. Rejected alternatives: plain `SHA256(body)`
+proves nothing since anyone can compute it; `SHA256(secret + body)` is broken by
+length-extension, which is the attack HMAC exists to prevent; asymmetric signing is genuinely
+better for many-receiver setups but costs key distribution, and Stripe and Svix both chose
+HMAC. *The receiver-side trap to document in week 7: verify against the **raw** body, because
+frameworks that auto-parse JSON destroy the bytes and re-serialising gives a different
+signature.*
+
+## Testing
+
+**2026-08-15 — Corrected: my own fan-out suite proved less than it looked like it did.**
+Six tests around `EndpointRepository.findMatching`, all green. But every case either used a
+null `event_types` filter or asserted that *no* delivery was created — so a
+`:type = any(event_types)` expression that never matched anything at all would have left the
+entire suite passing. Added `deliversWhenTheTypeIsListedInTheFilter`, the only test that
+fails if that expression is wrong. *Sanity check that catches this: for each branch of a
+predicate, ask "which test goes red if I delete this branch?" A pile of assert-empty tests is
+satisfied by a query that returns nothing, ever.*
+
 ## Shell and environment
 
 **2026-08-08 — Learned: what `$PATH` is.**

@@ -65,6 +65,13 @@
 			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
 
+		<!-- Auth. Static per-tenant bearer keys (DESIGN.md §3) run inside a real filter
+		     chain rather than a hand-rolled filter; see DECISIONS.md #10. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+
 		<!-- Test support. Boot 4 splits this per module rather than one starter-test. -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -84,6 +91,11 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-actuator-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security-test</artifactId>
 			<scope>test</scope>
 		</dependency>
 

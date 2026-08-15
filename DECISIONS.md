@@ -223,6 +223,100 @@ on the classpath over search results when an import cannot be resolved.
 
 ---
 
+## 9. States as lowercase `text` + CHECK, not a Postgres ENUM
+
+**Date:** 2026-08-15
+
+**Decision:** `endpoint.state` and `delivery.state` are `text` with a CHECK constraint,
+holding lowercase labels (`active`, `in_flight`). The Java enums map through an
+`AttributeConverter` rather than `@Enumerated(STRING)`.
+
+**Rejected:** a native Postgres `ENUM` type; and uppercase labels, which would have allowed
+`@Enumerated(STRING)` and deleted both converter classes.
+
+**Why:** Two separate questions got asked together, and they have different answers.
+
+*Column type.* Verified against the running PG 16 rather than assumed: `ALTER TYPE … ADD
+VALUE` **does** run inside a transaction (that restriction was lifted in PG 12), but the new
+value cannot be *used* until that transaction commits — so one migration cannot add a state
+and backfill rows into it. And there is no `ALTER TYPE … DROP VALUE` in any version, so
+removing or renaming a state means rebuilding the type and rewriting the column. §7c
+describes deliveries being *held* while a breaker is open, which makes a sixth delivery state
+a plausible week-8 migration; `text` + CHECK keeps that a one-line constraint swap.
+
+*Label case.* The converters were initially blamed on the column type. They are not: Postgres
+enum labels are case-sensitive and Hibernate binds a Java enum by its constant name, so a
+native `ENUM` with lowercase labels would fail exactly as `@Enumerated(STRING)` does — the
+converters do **case translation**, and the column type is not what forces them. Uppercase
+labels would have removed them under either column type. Chose idiomatic lowercase SQL and
+kept the two converters: the storage format is not the wire format, and the DTO layer owns
+the wire format from week 2 S2 onward.
+
+**Revisit when:** the converters start accumulating logic beyond case mapping, or a third
+state column appears and the boilerplate becomes three classes rather than two.
+
+---
+
+## 10. Spring Security for API-key auth, not a hand-rolled filter
+
+**Date:** 2026-08-15
+
+**Decision:** Added `spring-boot-starter-security` (+ `-security-test`). One
+`SecurityFilterChain` bean: `/health` open, everything else authenticated, CSRF off,
+sessions stateless. An `ApiKeyAuthFilter` resolves `Authorization: Bearer <key>` to a tenant
+UUID and puts it in the `SecurityContext` as the principal.
+
+**Rejected:** a bare `OncePerRequestFilter` registered on its own, with no security
+dependency at all — roughly forty lines using only what was already on the classpath. This
+was the recommendation; overruled deliberately.
+
+**Why:** The bare filter is smaller and adds nothing to the dependency tree, which is the
+default answer under CLAUDE.md. Two things bought the dependency instead. First, a real
+`SecurityContext` means the tenant arrives at controllers through the same mechanism every
+Spring codebase uses, rather than a request attribute this project invented — and week 9's
+DLQ replay and the week 11 console will both need authorisation decisions that a request
+attribute has no vocabulary for. Second, rolling your own auth is the kind of thing that
+reads as a warning sign rather than as economy, however correct this particular forty lines
+would have been.
+
+The costs were real and are now paid: CSRF had to be switched off (it defends a
+browser-attached credential, which a bearer key is not), sessions forced to stateless, the
+auto-configured in-memory user excluded so startup stops logging a generated password, and
+ERROR dispatches explicitly permitted — without that last one, a 400 from bean validation is
+re-authorised on its way to `/error` and surfaces as a 401.
+
+One thing the dependency *took away*, which is the part worth remembering: Boot's
+`ManagementWebSecurityAutoConfiguration` had been permitting `/health` for free, and it backs
+off the instant a `SecurityFilterChain` bean is declared. Adding the starter did not break
+the health check; declaring the chain would have. `ApiKeyAuthIT` pins it.
+
+**v1 shortcut, priced in:** keys are plaintext in configuration, so anyone who can read it can
+act as any tenant, and rotation is a redeploy. There is no tenant table because there is no
+self-serve signup (§9). Real key storage is hashed at rest with a prefix lookup for the
+constant-time compare — the `sk_` prefix is what makes that lookup possible, since you cannot
+find a row by hashing the presented key and scanning every stored hash.
+
+**Amended the same day, after `/code-review`:** the dev keys were originally committed to
+`application.properties`, which was worse than "plaintext in config" — it was a permanent
+backdoor. **Spring Boot *merges* `Map`-typed properties across sources rather than replacing
+them**, so an operator supplying production keys externally would have *added* to the map;
+`sk_test_alice` would have kept authenticating as tenant `1111…` in production, and no
+configuration change could have removed it. Keys now live in `application-local.properties`
+(dev only) and in `@SpringBootTest(properties = ...)` (tests); the packaged artifact ships
+none. `ApiKeyProperties.apiKeys` carries `@DefaultValue` because "no keys configured" is now
+the normal case rather than an error, and without it the binder produces `null` and every
+credentialed request 500s instead of returning 401. `NoApiKeysConfiguredIT` pins that.
+
+*The general lesson, worth more than the fix:* a `List` property is replaced by the
+highest-precedence source, a `Map` accumulates across all of them. Anything secret in a
+committed `Map` is additive and unremovable.
+
+**Revisit when:** tenants need to be created without a restart, or a second kind of principal
+appears (an operator for the console is the likely one) and "authenticated" stops being a
+single question.
+
+---
+
 <!-- Template — copy for each new decision
 
 ## N. Title
