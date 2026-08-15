@@ -1,6 +1,7 @@
 package com.webhookreplay.security;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 
 import java.util.Map;
 import java.util.Optional;
@@ -22,8 +23,16 @@ import java.util.UUID;
  * redeploy. Real key storage is hashed-at-rest with a prefix lookup. See DECISIONS.md #10.
  */
 @ConfigurationProperties(prefix = "webhook-replay")
-public record ApiKeyProperties(Map<String, UUID> apiKeys) {
+public record ApiKeyProperties(@DefaultValue Map<String, UUID> apiKeys) {
 
+	/**
+	 * {@code @DefaultValue} is not decoration. Boot's {@code ValueObjectBinder} binds an
+	 * unset constructor parameter to {@code null} unless it carries one, and since no keys
+	 * ship in the packaged {@code application.properties}, the unset case is the *normal*
+	 * one — an instance started without the {@code local} profile or an external key file
+	 * has no map at all. Without this, every request carrying a {@code Bearer} header would
+	 * NPE into a 500 instead of a clean 401, with nothing said at startup.
+	 */
 	public Optional<UUID> tenantFor(String apiKey) {
 		return Optional.ofNullable(apiKeys.get(apiKey));
 	}

@@ -18,7 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * stay open without a credential.
  */
 @Import(TestcontainersConfiguration.class)
-@SpringBootTest
+@SpringBootTest(properties = { TestApiKeys.ALICE_PROPERTY, TestApiKeys.BOB_PROPERTY })
 @AutoConfigureMockMvc
 class ApiKeyAuthIT {
 
@@ -53,7 +53,19 @@ class ApiKeyAuthIT {
 	@Test
 	void rejectsAKeyWithoutTheBearerScheme() throws Exception {
 		mockMvc.perform(post("/v1/events")
-						.header("Authorization", "sk_test_alice")
+						.header("Authorization", TestApiKeys.ALICE)
+						.contentType(MediaType.APPLICATION_JSON).content(BODY))
+				.andExpect(status().isUnauthorized());
+	}
+
+	/**
+	 * The mistake Postman invites: pasting {@code Bearer sk_...} into a Bearer Token field
+	 * that adds the scheme itself, producing {@code Bearer Bearer sk_...}.
+	 */
+	@Test
+	void rejectsADoubledBearerScheme() throws Exception {
+		mockMvc.perform(post("/v1/events")
+						.header("Authorization", "Bearer Bearer " + TestApiKeys.ALICE)
 						.contentType(MediaType.APPLICATION_JSON).content(BODY))
 				.andExpect(status().isUnauthorized());
 	}

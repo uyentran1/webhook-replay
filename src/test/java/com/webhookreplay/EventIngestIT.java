@@ -35,14 +35,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * invariant I1 is about. Rows are cleaned up explicitly instead.
  */
 @Import(TestcontainersConfiguration.class)
-@SpringBootTest
+@SpringBootTest(properties = { TestApiKeys.ALICE_PROPERTY, TestApiKeys.BOB_PROPERTY })
 @AutoConfigureMockMvc
 class EventIngestIT {
 
-	/** Must match a key in {@code application.properties}; the tenant is resolved from it. */
-	private static final String API_KEY = "sk_test_alice";
+	private static final String API_KEY = TestApiKeys.ALICE;
 
-	private static final UUID TENANT = UUID.fromString("11111111-1111-1111-1111-111111111111");
+	private static final UUID TENANT = UUID.fromString(TestApiKeys.ALICE_TENANT);
 
 	@Autowired
 	MockMvc mockMvc;
@@ -166,7 +165,7 @@ class EventIngestIT {
 	 */
 	@Test
 	void doesNotDeliverToAnotherTenantsEndpoint() throws Exception {
-		UUID otherTenant = UUID.fromString("22222222-2222-2222-2222-222222222222");
+		UUID otherTenant = UUID.fromString(TestApiKeys.BOB_TENANT);
 		endpoints.save(new Endpoint(otherTenant, "https://bob.test/hooks", "whsec_bob"));
 
 		postEvent("order.paid").andExpect(status().isAccepted());
@@ -189,11 +188,53 @@ class EventIngestIT {
 		assertThat(deliveries.findAll()).isEmpty();
 	}
 
+	/**
+	 * Binding {@code payload} to a {@code JsonNode} does not on its own guarantee an object:
+	 * a bare JSON string parses cleanly and stores a jsonb <em>scalar</em>, against which
+	 * {@code payload ->> 'order_id'} returns nothing. That is the week-12 delivery-log
+	 * failure, and it used to be accepted with a 202.
+	 */
+	@Test
+	void rejectsAPayloadThatIsNotAnObject() throws Exception {
+		postBody("""
+				{"type": "order.paid", "payload": "just a string"}""")
+				.andExpect(status().isBadRequest());
+
+		assertThat(events.findAll()).isEmpty();
+	}
+
+	/**
+	 * Jackson accepts an escaped NUL inside a string and re-emits the escape; Postgres
+	 * {@code jsonb} refuses it outright. Without the guard in {@code IngestRequest} this is a
+	 * 500 and a rolled-back transaction from sender-controlled input — and escaped NULs are
+	 * ordinary in anything relaying a database text column.
+	 */
+	@Test
+	void rejectsAnEscapedNulInThePayload() throws Exception {
+		postBody("{\"type\": \"order.paid\", \"payload\": {\"note\": \"a\\u0000b\"}}")
+				.andExpect(status().isBadRequest());
+
+		assertThat(events.findAll()).isEmpty();
+	}
+
+	@Test
+	void rejectsAMissingType() throws Exception {
+		postBody("""
+				{"payload": {"order_id": 1}}""")
+				.andExpect(status().isBadRequest());
+
+		assertThat(events.findAll()).isEmpty();
+	}
+
 	private ResultActions postEvent(String type) throws Exception {
+		return postBody("{\"type\": \"%s\", \"payload\": {\"order_id\": 42}}".formatted(type));
+	}
+
+	private ResultActions postBody(String body) throws Exception {
 		return mockMvc.perform(post("/v1/events")
 				.header("Authorization", "Bearer " + API_KEY)
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"type\": \"%s\", \"payload\": {\"order_id\": 42}}".formatted(type)));
+				.content(body));
 	}
 
 }

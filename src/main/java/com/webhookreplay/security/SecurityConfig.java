@@ -29,7 +29,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 class SecurityConfig {
 
 	@Bean
-	SecurityFilterChain apiFilterChain(HttpSecurity http, ApiKeyAuthFilter apiKeyAuthFilter) throws Exception {
+	SecurityFilterChain apiFilterChain(HttpSecurity http, ApiKeyProperties apiKeyProperties) throws Exception {
 		return http
 				// No cookies, no browser, no session to fix on: CSRF defends a credential the
 				// browser attaches automatically, and a bearer key is not one. Leaving it on
@@ -49,7 +49,10 @@ class SecurityConfig {
 						.requestMatchers("/health").permitAll()
 						.anyRequest().authenticated())
 				.exceptionHandling(handling -> handling.authenticationEntryPoint(jsonUnauthorized()))
-				.addFilterBefore(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter.class)
+				// Constructed here rather than injected as a @Component bean: Boot registers
+				// any Filter bean with the servlet container as well, putting a second copy
+				// outside this chain. See ApiKeyAuthFilter's javadoc.
+				.addFilterBefore(new ApiKeyAuthFilter(apiKeyProperties), UsernamePasswordAuthenticationFilter.class)
 				.build();
 	}
 

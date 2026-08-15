@@ -32,6 +32,30 @@ session and is the first thing to do.
 
 **Blocked on:** nothing.
 
+**From `/code-review` at the end of week 2 S2 — seven of eight fixed the same day**, after
+manual testing confirmed the two payload bugs. Suite went 16 -> 22 tests. Both new payload
+tests were mutation-checked: with the guards replaced by `if (false)`, the object test returns
+202 and the NUL test errors, so they pin the fix rather than passing incidentally.
+
+Fixed: dev keys out of the packaged artifact into `application-local.properties`
+(`DECISIONS.md` #10 amended); `@DefaultValue` on `ApiKeyProperties.apiKeys`, with
+`NoApiKeysConfiguredIT` pinning 401-not-500; escaped NUL and non-object payloads rejected as
+400 in `IngestRequest`; `@Component` dropped from `ApiKeyAuthFilter` so it exists only inside
+the chain; `createEmptyContext()` instead of mutating the shared `SecurityContext`; README
+quickstart reordered so registering a receiver comes first.
+
+**Still open — this one needs a decision, not a fix:**
+
+- **Every timestamp comes from the app clock, but week 3's SQL will use the DB clock.**
+  `Delivery` initialises `createdAt`, `updatedAt` and `nextAttemptAt` with `Instant.now()`,
+  and Hibernate always includes those columns in the INSERT, so V1's `default now()` never
+  fires. The claim query (`next_attempt_at <= now()`) and the 60 s lease reaper will read
+  Postgres's clock instead. **Decide before week 3 S2:** either drop the Java initialisers and
+  let the DB defaults own these columns, or set them from one injected `Clock`. Skew between
+  app host and DB otherwise makes fresh deliveries unclaimable or claimable early, and shifts
+  the lease window. Left alone deliberately -- it is delivery-timing semantics and belongs
+  with the claim query rather than ahead of it.
+
 **Add to the session ritual (from today's `BROKE.md` entry):** `/session-start` runs
 `docker compose up -d` and `./mvnw verify`, and **neither starts the app**. That let a broken
 compose database survive an entire session. Add a smoke check — `spring-boot:run`, curl

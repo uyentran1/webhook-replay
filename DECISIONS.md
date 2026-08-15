@@ -290,10 +290,26 @@ One thing the dependency *took away*, which is the part worth remembering: Boot'
 off the instant a `SecurityFilterChain` bean is declared. Adding the starter did not break
 the health check; declaring the chain would have. `ApiKeyAuthIT` pins it.
 
-**v1 shortcut, priced in:** keys are plaintext in `application.properties`, so anyone who can
-read the config can act as any tenant, and rotation is a redeploy. There is no tenant table
-because there is no self-serve signup (§9). Real key storage is hashed at rest with a prefix
-lookup for the constant-time compare.
+**v1 shortcut, priced in:** keys are plaintext in configuration, so anyone who can read it can
+act as any tenant, and rotation is a redeploy. There is no tenant table because there is no
+self-serve signup (§9). Real key storage is hashed at rest with a prefix lookup for the
+constant-time compare — the `sk_` prefix is what makes that lookup possible, since you cannot
+find a row by hashing the presented key and scanning every stored hash.
+
+**Amended the same day, after `/code-review`:** the dev keys were originally committed to
+`application.properties`, which was worse than "plaintext in config" — it was a permanent
+backdoor. **Spring Boot *merges* `Map`-typed properties across sources rather than replacing
+them**, so an operator supplying production keys externally would have *added* to the map;
+`sk_test_alice` would have kept authenticating as tenant `1111…` in production, and no
+configuration change could have removed it. Keys now live in `application-local.properties`
+(dev only) and in `@SpringBootTest(properties = ...)` (tests); the packaged artifact ships
+none. `ApiKeyProperties.apiKeys` carries `@DefaultValue` because "no keys configured" is now
+the normal case rather than an error, and without it the binder produces `null` and every
+credentialed request 500s instead of returning 401. `NoApiKeysConfiguredIT` pins that.
+
+*The general lesson, worth more than the fix:* a `List` property is replaced by the
+highest-precedence source, a `Map` accumulates across all of them. Anything secret in a
+committed `Map` is additive and unremovable.
 
 **Revisit when:** tenants need to be created without a restart, or a second kind of principal
 appears (an operator for the console is the likely one) and "authenticated" stops being a

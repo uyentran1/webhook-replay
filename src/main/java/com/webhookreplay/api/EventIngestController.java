@@ -39,11 +39,8 @@ class EventIngestController {
 	@PostMapping
 	@ResponseStatus(HttpStatus.ACCEPTED)
 	IngestResponse ingest(@AuthenticationPrincipal UUID tenantId, @RequestBody IngestRequest request) {
-		// payload.toString() is the serialisation we store, sign in week 7, and send. It is
-		// not byte-identical to what the sender wrote -- the jsonb column normalises key
-		// order and whitespace regardless -- and it does not need to be. See Event.payload.
 		return new IngestResponse(
-				eventIngestService.ingest(tenantId, request.type(), request.payload().toString()));
+				eventIngestService.ingest(tenantId, request.type(), request.payloadAsJson()));
 	}
 
 }

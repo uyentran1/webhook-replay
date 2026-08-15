@@ -6,8 +6,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -25,8 +25,15 @@ import java.util.UUID;
  *
  * <p>The principal is the tenant {@link UUID} rather than a username, because a tenant is
  * what the application actually authorises against — there is no user model in v1.
+ *
+ * <p>Deliberately <strong>not</strong> a {@code @Component}. Boot registers any {@code Filter}
+ * bean with the servlet container, which would put a second copy of this filter outside the
+ * security chain entirely — today that is masked by filter ordering and
+ * {@code OncePerRequestFilter}'s already-filtered attribute, but both are incidental, and a
+ * second {@code SecurityFilterChain} with a {@code securityMatcher} (the likely shape of the
+ * week-11 console) would expose it. {@code SecurityConfig} constructs it instead, so it exists
+ * only where it is wired.
  */
-@Component
 class ApiKeyAuthFilter extends OncePerRequestFilter {
 
 	private static final String BEARER = "Bearer ";
@@ -48,7 +55,15 @@ class ApiKeyAuthFilter extends OncePerRequestFilter {
 					// authentication and authorisation collapse into the same question —
 					// is this a known key?
 					.map(tenantId -> new UsernamePasswordAuthenticationToken(tenantId, null, List.of()))
-					.ifPresent(SecurityContextHolder.getContext()::setAuthentication);
+					.ifPresent(authentication -> {
+						// A fresh context, not a mutation of the existing one. Mutating the
+						// shared instance is safe under the default MODE_THREADLOCAL and
+						// becomes cross-request authentication leakage under MODE_GLOBAL —
+						// a one-property change with a very non-local consequence.
+						SecurityContext context = SecurityContextHolder.createEmptyContext();
+						context.setAuthentication(authentication);
+						SecurityContextHolder.setContext(context);
+					});
 		}
 
 		// SecurityContextHolder is ThreadLocal-backed, and with virtual threads enabled every
