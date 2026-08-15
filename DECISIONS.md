@@ -257,6 +257,50 @@ state column appears and the boilerplate becomes three classes rather than two.
 
 ---
 
+## 10. Spring Security for API-key auth, not a hand-rolled filter
+
+**Date:** 2026-08-15
+
+**Decision:** Added `spring-boot-starter-security` (+ `-security-test`). One
+`SecurityFilterChain` bean: `/health` open, everything else authenticated, CSRF off,
+sessions stateless. An `ApiKeyAuthFilter` resolves `Authorization: Bearer <key>` to a tenant
+UUID and puts it in the `SecurityContext` as the principal.
+
+**Rejected:** a bare `OncePerRequestFilter` registered on its own, with no security
+dependency at all — roughly forty lines using only what was already on the classpath. This
+was the recommendation; overruled deliberately.
+
+**Why:** The bare filter is smaller and adds nothing to the dependency tree, which is the
+default answer under CLAUDE.md. Two things bought the dependency instead. First, a real
+`SecurityContext` means the tenant arrives at controllers through the same mechanism every
+Spring codebase uses, rather than a request attribute this project invented — and week 9's
+DLQ replay and the week 11 console will both need authorisation decisions that a request
+attribute has no vocabulary for. Second, rolling your own auth is the kind of thing that
+reads as a warning sign rather than as economy, however correct this particular forty lines
+would have been.
+
+The costs were real and are now paid: CSRF had to be switched off (it defends a
+browser-attached credential, which a bearer key is not), sessions forced to stateless, the
+auto-configured in-memory user excluded so startup stops logging a generated password, and
+ERROR dispatches explicitly permitted — without that last one, a 400 from bean validation is
+re-authorised on its way to `/error` and surfaces as a 401.
+
+One thing the dependency *took away*, which is the part worth remembering: Boot's
+`ManagementWebSecurityAutoConfiguration` had been permitting `/health` for free, and it backs
+off the instant a `SecurityFilterChain` bean is declared. Adding the starter did not break
+the health check; declaring the chain would have. `ApiKeyAuthIT` pins it.
+
+**v1 shortcut, priced in:** keys are plaintext in `application.properties`, so anyone who can
+read the config can act as any tenant, and rotation is a redeploy. There is no tenant table
+because there is no self-serve signup (§9). Real key storage is hashed at rest with a prefix
+lookup for the constant-time compare.
+
+**Revisit when:** tenants need to be created without a restart, or a second kind of principal
+appears (an operator for the console is the likely one) and "authenticated" stops being a
+single question.
+
+---
+
 <!-- Template — copy for each new decision
 
 ## N. Title
