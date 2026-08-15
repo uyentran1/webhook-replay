@@ -223,6 +223,40 @@ on the classpath over search results when an import cannot be resolved.
 
 ---
 
+## 9. States as lowercase `text` + CHECK, not a Postgres ENUM
+
+**Date:** 2026-08-15
+
+**Decision:** `endpoint.state` and `delivery.state` are `text` with a CHECK constraint,
+holding lowercase labels (`active`, `in_flight`). The Java enums map through an
+`AttributeConverter` rather than `@Enumerated(STRING)`.
+
+**Rejected:** a native Postgres `ENUM` type; and uppercase labels, which would have allowed
+`@Enumerated(STRING)` and deleted both converter classes.
+
+**Why:** Two separate questions got asked together, and they have different answers.
+
+*Column type.* Verified against the running PG 16 rather than assumed: `ALTER TYPE … ADD
+VALUE` **does** run inside a transaction (that restriction was lifted in PG 12), but the new
+value cannot be *used* until that transaction commits — so one migration cannot add a state
+and backfill rows into it. And there is no `ALTER TYPE … DROP VALUE` in any version, so
+removing or renaming a state means rebuilding the type and rewriting the column. §7c
+describes deliveries being *held* while a breaker is open, which makes a sixth delivery state
+a plausible week-8 migration; `text` + CHECK keeps that a one-line constraint swap.
+
+*Label case.* The converters were initially blamed on the column type. They are not: Postgres
+enum labels are case-sensitive and Hibernate binds a Java enum by its constant name, so a
+native `ENUM` with lowercase labels would fail exactly as `@Enumerated(STRING)` does — the
+converters do **case translation**, and the column type is not what forces them. Uppercase
+labels would have removed them under either column type. Chose idiomatic lowercase SQL and
+kept the two converters: the storage format is not the wire format, and the DTO layer owns
+the wire format from week 2 S2 onward.
+
+**Revisit when:** the converters start accumulating logic beyond case mapping, or a third
+state column appears and the boilerplate becomes three classes rather than two.
+
+---
+
 <!-- Template — copy for each new decision
 
 ## N. Title

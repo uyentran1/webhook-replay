@@ -18,7 +18,7 @@ Plan 14 weeks, expect 18. A missed week is not failure; four consecutive missed 
 ## Phase 1 — Durable ingest and naive delivery (weeks 2–4)
 
 **Week 2**
-- [ ] **S1** Migration V1: all four tables. Entities + repositories.
+- [x] **S1** Migration V1: all four tables. Entities + repositories.
 - [ ] **S2** `POST /v1/events` → persist → 202. API-key auth filter. Fan-out `delivery` rows on ingest. Integration test with Testcontainers.
 
 **Week 3**

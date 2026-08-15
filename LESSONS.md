@@ -106,6 +106,66 @@ model isn't in `.idea/` at all, it's under
 `~/Library/Caches/JetBrains/<IDE>/projects/<name>.<hash>/external_build_system/`. The tell that
 an import actually ran is `.idea/compiler.xml` naming the module.
 
+**2026-08-15 — Learned: JPA, Hibernate and Spring Data JPA are three different things.**
+JPA is a *specification* — annotations and interfaces, no behaviour. Hibernate is the
+implementation that does the work. Spring Data JPA sits on top and generates repository
+implementations from interface declarations. Worth keeping distinct because the answer to "why
+is your claim query native SQL?" depends on it: Spring Data derives queries from method names
+and cannot express `FOR UPDATE SKIP LOCKED` or a window function, so week 3's claim loop drops
+to `@Query(nativeQuery = true)` while CRUD stays derived. *The defensible line: ORM for the
+CRUD, hand-written SQL for the queue.*
+
+**2026-08-15 — Learned: Spring's `DataIntegrityViolationException` is a translation, applied
+at the repository proxy boundary.** Surfaced from a failing assertion in `SchemaMappingIT`:
+`entityManager.flush()` threw Hibernate's native `ConstraintViolationException` instead.
+Hibernate throws vendor-flavoured exceptions; Spring translates them into its own
+vendor-neutral hierarchy, but only for calls that pass through a repository proxy. Going
+straight to the `EntityManager` goes around the translator. *Consequence: the exception the
+week-9 ingest path catches depends on how it triggers the flush. Prefer `saveAndFlush` in
+tests, so the test sees what production will.*
+
+## Postgres, schema and migrations
+
+**2026-08-15 — Learned: DDL vs DML, and that Postgres DDL is transactional.**
+DDL defines structure (`CREATE`/`ALTER`/`DROP TABLE`, constraints, indexes); DML moves rows
+(`SELECT`/`INSERT`/`UPDATE`/`DELETE`). A Flyway migration is a file of DDL. The part that
+matters operationally: Postgres wraps DDL in transactions, so a migration that creates three
+tables and fails on the fourth rolls all three back — you never hand-repair half a schema.
+MySQL does not do this. *A small, real dividend of the Postgres-only decision (`DECISIONS.md` #1).*
+
+**2026-08-15 — Corrected: switching the column to a Postgres `ENUM` would let me delete the
+state converters.** It would not. Postgres enum labels are **case-sensitive**, and Hibernate
+binds a Java enum by its constant name — `PENDING`, uppercase. A native `ENUM` with lowercase
+labels fails exactly as `@Enumerated(STRING)` does, just with a different error message. The
+converters do **case translation**; the column type is not what forces them. The knob that
+actually removes them is the *label case*, under either column type. *Rule of thumb: before
+changing a type to delete a class, name the exact line that becomes unnecessary. If you can't,
+the class is doing a different job than you think.* Full reasoning in `DECISIONS.md` #9.
+
+**2026-08-15 — Corrected: "never edit an applied migration, fix forward with `V2__`" applies
+everywhere.** It applies to migrations that have **escaped your machine**. The rule exists
+because Flyway checksums an applied migration and refuses a mismatch — which only bites where
+you cannot drop the database. `V1` on an unmerged branch, applied to a local dev DB and to
+throwaway Testcontainers instances, does not qualify: editing it and recreating the schema is
+correct, and shipping a `V1`+`V2` pair that adds a column and immediately changes it, before
+either ever ran anywhere real, bakes a permanent scar into the schema history for nothing.
+*Test to apply: can I drop every database this has been applied to? If yes, edit it.*
+
+**2026-08-15 — Learned: a `UNIQUE` constraint *is* an index.**
+`DESIGN.md` §4 says no indexes until a query justifies them, and V1 obeys that — yet it
+created five, because Postgres has no way to enforce uniqueness or a primary key other than
+building a unique index. *So "no indexes yet" is shorthand for "no indexes chosen for read
+performance." Verify what actually exists with `select tablename, indexname from pg_indexes`,
+not by reading the migration.*
+
+**2026-08-15 — Learned: what Postgres 16 really costs you on `ENUM`.**
+Checked against the running container rather than assumed, after I asserted an outdated
+restriction. `ALTER TYPE … ADD VALUE` **does** run inside a transaction — that was lifted in
+PG 12 — but the new value cannot be *used* until the transaction commits, so one migration
+cannot add a state and backfill rows into it. And there is no `ALTER TYPE … DROP VALUE` in any
+version, so removing a state means rebuilding the type and rewriting the column. *Both facts
+took 30 seconds to check against a live database, which is faster than being wrong about them.*
+
 ## Shell and environment
 
 **2026-08-08 — Learned: what `$PATH` is.**
