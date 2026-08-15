@@ -40,10 +40,29 @@ public class Event {
 	private String type;
 
 	/**
-	 * Held as an opaque string, not a parsed tree. We never inspect or transform payloads
-	 * (a transformation DSL is out of scope, §9), and the bytes we sign in §8 must be
-	 * exactly the bytes we received — round-tripping through a JSON model risks reordering
-	 * keys and invalidating the signature.
+	 * Held as an opaque string, not a parsed tree: we never inspect or transform payloads
+	 * (a transformation DSL is out of scope, §9).
+	 *
+	 * <p>This javadoc used to claim the stored bytes must be exactly the bytes the sender
+	 * sent, to keep the §8 signature valid. That was never achievable and the column type is
+	 * why — {@code jsonb} normalises on write. Verified against PG 16:
+	 * {@code '{"b":1, "a":2, "a":3}'::jsonb} comes back as {@code {"a": 3, "b": 1}}, with
+	 * keys reordered, whitespace dropped and the duplicate collapsed. No amount of care in
+	 * Java changes that.
+	 *
+	 * <p>The invariant that actually holds, and the one §8 needs: <strong>the bytes we sign
+	 * are the bytes we send.</strong> A receiver verifies our signature against the body we
+	 * handed it, and those are the same bytes, so signing is self-consistent regardless.
+	 *
+	 * <p><strong>The consequence to be honest about:</strong> what we POST to a receiver is
+	 * not byte-identical to what the sender gave us. It is semantically the same JSON in
+	 * every case but one — duplicate keys collapse last-wins, so {@code {"d":1, "d":2}} is
+	 * delivered as {@code {"d": 2}}. RFC 8259 leaves that case undefined and most parsers
+	 * collapse it too. Strings, numbers and precision all survive intact.
+	 *
+	 * <p>Storing the sender's exact bytes would buy nothing anyway: week 9 replay has to
+	 * re-sign with a fresh timestamp, or the receiver rejects it as a replay attack, so a
+	 * replayed delivery necessarily carries different signed bytes than the original.
 	 */
 	@JdbcTypeCode(SqlTypes.JSON)
 	@Column(nullable = false)
