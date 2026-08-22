@@ -40,9 +40,6 @@ public class EventIngestService {
 		this.deliveryRepository = deliveryRepository;
 	}
 
-	/**
-	 * @return the id of the persisted event
-	 */
 	@Transactional
 	public UUID ingest(UUID tenantId, String type, String payload) {
 		Event event = eventRepository.save(new Event(tenantId, type, payload));
